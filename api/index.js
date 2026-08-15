@@ -74,14 +74,20 @@ module.exports = async (req, res) => {
           if(l) await redis.set(`licence:${email}`, {...l, status: 'cancelled'});
         }
       }
+      if(event.type === 'charge.refunded') {
+        const email = event.data.object.billing_details?.email?.toLowerCase();
+        if(email) {
+          const l = await redis.get(`licence:${email}`);
+          if(l) await redis.set(`licence:${email}`, {...l, status: 'cancelled'});
+        }
+      }
     } catch(e) {
       return res.status(400).json({ error: e.message });
     }
     return res.json({ received: true });
   }
 
-  // Route par défaut
-// GET /success
+  // GET /success
   if(req.method === 'GET' && url.includes('/success')) {
     res.setHeader('Content-Type', 'text/html');
     return res.end(`<!DOCTYPE html>
@@ -122,7 +128,6 @@ p{font-size:15px;color:#7B78A8;line-height:1.6;margin-bottom:24px}
 </html>`);
   }
 
-  // Route par défaut
   return res.json({ status: 'SYNC.PLANNER API', version: '1.0.0' });
 };
 
