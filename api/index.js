@@ -81,6 +81,48 @@ module.exports = async (req, res) => {
   }
 
   // Route par défaut
+// GET /success
+  if(req.method === 'GET' && url.includes('/success')) {
+    res.setHeader('Content-Type', 'text/html');
+    return res.end(`<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>SYNC.PLANNER — Paiement confirmé</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Space Grotesk',sans-serif;background:#0A0910;color:#F0EEF8;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:#1A1838;border:1px solid #7C3AED;border-radius:20px;padding:48px 40px;max-width:480px;width:100%;text-align:center;box-shadow:0 0 60px rgba(124,58,237,0.2)}
+.icon{font-size:64px;margin-bottom:24px}
+h1{font-size:28px;font-weight:700;margin-bottom:12px}
+p{font-size:15px;color:#7B78A8;line-height:1.6;margin-bottom:24px}
+.steps{text-align:left;display:flex;flex-direction:column;gap:14px;margin-bottom:28px}
+.step{display:flex;gap:12px;align-items:flex-start}
+.num{width:26px;height:26px;border-radius:50%;background:#7C3AED;color:white;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.step p{font-size:14px;color:#C4C0E8;margin:0;padding-top:3px}
+.btn{display:block;background:#7C3AED;color:white;border:none;border-radius:10px;padding:14px;font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;cursor:pointer;width:100%;margin-bottom:16px}
+.footer{font-size:11px;color:#4B4870}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">🎉</div>
+  <h1>Bienvenue en Pro !</h1>
+  <p>Ton paiement est confirmé. SYNC.PLANNER Pro est actif.</p>
+  <div class="steps">
+    <div class="step"><div class="num">1</div><p>Retourne dans SYNC.PLANNER</p></div>
+    <div class="step"><div class="num">2</div><p>Entre ton email dans l'écran d'activation</p></div>
+    <div class="step"><div class="num">3</div><p>Clique <strong>"Activer ma licence"</strong> — c'est parti !</p></div>
+  </div>
+  <button class="btn" onclick="window.close()">✓ Fermer cette fenêtre</button>
+  <div class="footer">Des questions ? contact@syncplanner.app</div>
+</div>
+</body>
+</html>`);
+  }
+
+  // Route par défaut
   return res.json({ status: 'SYNC.PLANNER API', version: '1.0.0' });
 };
 
