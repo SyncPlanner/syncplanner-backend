@@ -153,7 +153,7 @@ p{font-size:15px;color:#7B78A8;line-height:1.6;margin-bottom:24px}
     <div class="step"><div class="num">2</div><p>Entre ton email dans l'écran d'activation</p></div>
     <div class="step"><div class="num">3</div><p>Clique <strong>"Activer ma licence"</strong> — c'est parti !</p></div>
   </div>
-  <button class="btn" onclick="window.close()">✓ Fermer cette fenêtre</button>
+  <button class="btn" onclick="window.close();window.location.href='https://syncplanner.app'">✓ Retourner sur syncplanner.app</button>
   <div class="footer">Des questions ? contact@syncplanner.app</div>
 </div>
 </body>
