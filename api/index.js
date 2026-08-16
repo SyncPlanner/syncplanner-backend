@@ -94,10 +94,23 @@ module.exports = async (req, res) => {
         }
       }
       if(event.type === 'charge.refunded') {
-        const email = event.data.object.billing_details?.email?.toLowerCase();
+        const charge = event.data.object;
+        // Chercher l'email à plusieurs endroits
+        let email = charge.billing_details?.email?.toLowerCase();
+        if(!email && charge.customer) {
+          // Récupérer l'email depuis le customer Stripe
+          try {
+            const customer = await stripe.customers.retrieve(charge.customer);
+            email = customer.email?.toLowerCase();
+          } catch(e) {}
+        }
+        if(!email && charge.receipt_email) {
+          email = charge.receipt_email.toLowerCase();
+        }
         if(email) {
           const l = await redis.get(`licence:${email}`);
           if(l) await redis.set(`licence:${email}`, {...l, status: 'cancelled'});
+          console.log(`↩ Remboursement — licence annulée : ${email}`);
         }
       }
     } catch(e) {
