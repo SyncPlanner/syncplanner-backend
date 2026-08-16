@@ -47,6 +47,25 @@ module.exports = async (req, res) => {
     }
   }
 
+  // POST /create-portal
+  if(req.method === 'POST' && url.includes('/create-portal')) {
+    const body = await getBody(req);
+    const { email } = JSON.parse(body);
+    try {
+      const customers = await stripe.customers.list({ email: email.toLowerCase(), limit: 1 });
+      if(!customers.data.length) {
+        return res.status(404).json({ error: 'Customer not found' });
+      }
+      const session = await stripe.billingPortal.sessions.create({
+        customer: customers.data[0].id,
+        return_url: 'https://syncplanner.app',
+      });
+      return res.json({ url: session.url });
+    } catch(e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // POST /webhook
   if(req.method === 'POST' && url.includes('/webhook')) {
     const rawBody = await getBody(req);
