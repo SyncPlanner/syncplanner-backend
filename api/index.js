@@ -17,14 +17,88 @@ module.exports = async (req, res) => {
 
   const url = req.url || '';
 
-  // GET /verify/:email
+  // GET /verify/:email?device=<deviceId>
+  // Vérification en lecture seule : la licence doit être active ET, si un
+  // deviceId est fourni, cet appareil doit déjà faire partie des appareils
+  // enregistrés (2 max) — sinon on ne le fait PAS entrer automatiquement,
+  // c'est /activate qui consomme un slot, explicitement.
   if(req.method === 'GET' && url.includes('/verify/')) {
-    const email = decodeURIComponent(url.split('/verify/')[1]).toLowerCase();
+    const [emailRaw, qs] = url.split('/verify/')[1].split('?');
+    const email = decodeURIComponent(emailRaw).toLowerCase();
+    const deviceId = qs ? new URLSearchParams(qs).get('device') : null;
+
     const licence = await redis.get(`licence:${email}`);
-    if(licence && licence.status === 'active') {
-      return res.json({ valid: true, plan: licence.plan, expires: licence.expires });
+    if(!licence || licence.status !== 'active') {
+      return res.json({ valid: false });
     }
-    return res.json({ valid: false });
+    if(deviceId) {
+      const devices = licence.devices || [];
+      const known = devices.some(d => d.id === deviceId);
+      if(!known) return res.json({ valid: false, reason: 'device_not_activated' });
+    }
+    return res.json({ valid: true, plan: licence.plan, expires: licence.expires, devices: licence.devices || [] });
+  }
+
+  // POST /deactivate — { email, deviceId }
+  // Libère un slot d'appareil (ex: ancien Mac revendu) pour permettre
+  // d'en activer un nouveau sans dépasser la limite de 2.
+  if(req.method === 'POST' && url.includes('/deactivate')) {
+    const body = await getBody(req);
+    try {
+      const { email, deviceId } = JSON.parse(body);
+      if(!email || !deviceId) return res.status(400).json({ error: 'email et deviceId requis' });
+
+      const key = `licence:${email.toLowerCase()}`;
+      const licence = await redis.get(key);
+      if(!licence) return res.status(404).json({ error: 'Licence introuvable' });
+
+      licence.devices = (licence.devices || []).filter(d => d.id !== deviceId);
+      await redis.set(key, licence);
+      return res.json({ valid: true, devices: licence.devices });
+    } catch(e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // POST /activate — { email, deviceId, deviceName }
+  // Enregistre CET appareil sur la licence (2 max). Ré-activer un appareil
+  // déjà enregistré est sans effet (idempotent) — utile en cas de
+  // réinstallation de l'app sur la même machine.
+  if(req.method === 'POST' && url.includes('/activate')) {
+    const body = await getBody(req);
+    try {
+      const { email, deviceId, deviceName } = JSON.parse(body);
+      if(!email || !deviceId) return res.status(400).json({ error: 'email et deviceId requis' });
+
+      const key = `licence:${email.toLowerCase()}`;
+      const licence = await redis.get(key);
+      if(!licence || licence.status !== 'active') {
+        return res.json({ valid: false, reason: 'no_active_licence' });
+      }
+
+      const devices = licence.devices || [];
+      const existing = devices.find(d => d.id === deviceId);
+      if(existing) {
+        existing.lastSeen = new Date().toISOString();
+        await redis.set(key, licence);
+        return res.json({ valid: true, plan: licence.plan, expires: licence.expires });
+      }
+
+      if(devices.length >= 2) {
+        return res.json({
+          valid: false,
+          reason: 'device_limit',
+          devices: devices.map(d => ({ name: d.name, activatedAt: d.activatedAt })),
+        });
+      }
+
+      devices.push({ id: deviceId, name: deviceName || 'Mac', activatedAt: new Date().toISOString(), lastSeen: new Date().toISOString() });
+      licence.devices = devices;
+      await redis.set(key, licence);
+      return res.json({ valid: true, plan: licence.plan, expires: licence.expires });
+    } catch(e) {
+      return res.status(500).json({ error: e.message });
+    }
   }
 
   // POST /create-checkout
