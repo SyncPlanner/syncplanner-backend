@@ -115,6 +115,7 @@ module.exports = async (req, res) => {
         mode: plan === 'lifetime' ? 'payment' : 'subscription',
         customer_email: email,
         line_items: [{ price: prices[plan]||prices.monthly, quantity: 1 }],
+        metadata: { plan: prices[plan] ? plan : 'monthly' },
         success_url: 'https://syncplanner-backend.vercel.app/success',
         cancel_url:  'https://syncplanner-backend.vercel.app/cancel',
       });
@@ -159,18 +160,38 @@ module.exports = async (req, res) => {
           await redis.set(`licence:${email}`, {
             status: 'active',
             plan: s.mode === 'payment' ? 'lifetime' : 'pro',
-            expires: s.mode === 'payment' ? null : new Date(Date.now()+365*24*60*60*1000).toISOString(),
+            // Abonnement : 1re période (≈ 1 mois ou 1 an selon la formule) ; prolongée ensuite par invoice.paid
+            expires: s.mode === 'payment' ? null : new Date(Date.now() + (s.metadata?.plan === 'yearly' ? 368 : 34) * 24 * 60 * 60 * 1000).toISOString(),
+            devices: (await redis.get(`licence:${email}`))?.devices || [],
           });
         }
       }
+      // Abonnement terminé (résilié et période payée écoulée, ou impayé) → licence coupée.
+      // L'objet subscription n'a pas d'email : on le récupère via le client Stripe.
       if(event.type === 'customer.subscription.deleted') {
-        const email = event.data.object.customer_email?.toLowerCase();
+        const email = await emailOfCustomer(event.data.object.customer);
         if(email) {
           const l = await redis.get(`licence:${email}`);
-          if(l) await redis.set(`licence:${email}`, {...l, status: 'cancelled'});
+          if(l && l.plan !== 'lifetime') await redis.set(`licence:${email}`, {...l, status: 'cancelled'});
         }
       }
-      if(event.type === 'charge.refunded') {
+      // Chaque paiement d'abonnement (1er mois, renouvellements) → licence active jusqu'à la fin de la période payée
+      if(event.type === 'invoice.paid') {
+        const inv = event.data.object;
+        if(inv.subscription || inv.parent?.subscription_details?.subscription) {
+          const email = inv.customer_email?.toLowerCase() || await emailOfCustomer(inv.customer);
+          const end = inv.lines?.data?.[0]?.period?.end;
+          if(email) {
+            const l = (await redis.get(`licence:${email}`)) || {};
+            if(l.plan !== 'lifetime') await redis.set(`licence:${email}`, {
+              ...l, status: 'active', plan: 'pro',
+              expires: end ? new Date((end + 3 * 86400) * 1000).toISOString() : (l.expires || null),   // +3 j de marge
+            });
+          }
+        }
+      }
+      // Remboursement intégral (garantie 14 jours) → licence coupée. Un remboursement partiel ne touche pas la licence.
+      if(event.type === 'charge.refunded' && event.data.object.refunded === true) {
         const charge = event.data.object;
         // Chercher l'email à plusieurs endroits
         let email = charge.billing_details?.email?.toLowerCase();
@@ -239,6 +260,11 @@ p{font-size:15px;color:#7B78A8;line-height:1.6;margin-bottom:24px}
 
   return res.json({ status: 'SYNC.PLANNER API', version: '1.0.0' });
 };
+
+async function emailOfCustomer(id) {
+  if(!id) return null;
+  try { const c = await stripe.customers.retrieve(id); return c.email?.toLowerCase() || null; } catch(e) { return null; }
+}
 
 function getBody(req) {
   return new Promise((resolve, reject) => {
